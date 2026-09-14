@@ -293,7 +293,7 @@ working key, not by reading docs in advance.
    embedding models are `gemini-embedding-001` (stable) and `gemini-embedding-2`
    (newer) — `text-embedding-004` has been fully retired since this project's design
    was written. Switched `EMBEDDING_MODEL` (config default, `.env`, `.env.example`,
-   README) to `models/gemini-embedding-001`. `gemini-2.5-flash` (the chat model) was
+   README) to `models/gemini-embedding-001`. `gemini-3.6-flash` (the chat model) was
    still live in the same model list, so it didn't need changing.
 4. **Gemini API prepay credits depleted** on the very first real embedding call —
    `429 ResourceExhausted`. The user, reasonably, didn't want to add money without
@@ -310,3 +310,23 @@ working key, not by reading docs in advance.
    there's no overspend risk there by construction (you only ever lose what you
    deposit); Cloud Run's free tier should keep the GCP side near $0 at this traffic
    level regardless. Left the decision of how much to prepay to the user.
+5. **`models/gemini-2.5-flash` is no longer available to new users**, discovered on
+   the very next call (after credits were added, ingestion succeeded, generation
+   failed): `404 ... no longer available to new users. Please update your code to use
+   models/gemini-3.6-flash`. Since this project's Gemini key is new, it fell on the
+   wrong side of that cutoff even though `gemini-2.5-flash` was still present in the
+   model list queried earlier for the embedding fix — model *availability* and model
+   *listing* aren't the same guarantee. Switched `GEMINI_MODEL` (config default,
+   `.env`, `.env.example`, README, this log) to `models/gemini-3.6-flash`.
+
+**Live end-to-end verification, finally**, after all five fixes above:
+- Local (`flask run`): `POST /ask` on "What problem does retrieval-augmented
+  generation solve...?" → 200, correct grounded answer, `sources:
+  ["retrieval_augmented_generation.pdf"]`.
+- Docker (`docker build` + `docker run --env-file .env`): `POST /ask` on "What is the
+  attention mechanism in a transformer?" → 200, correct grounded answer, `sources:
+  ["attention_is_all_you_need.pdf"]`.
+
+Both answers were specific to the actual paper content (not generic knowledge) and
+cited the correct source file, confirming retrieval is actually selecting the right
+document per question rather than just returning *something*.

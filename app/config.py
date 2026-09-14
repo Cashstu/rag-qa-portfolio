@@ -7,7 +7,7 @@ load_dotenv()
 
 class Config:
     GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
-    GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
     EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "models/gemini-embedding-001")
     CHROMA_PERSIST_DIR = os.environ.get("CHROMA_PERSIST_DIR", "/tmp/chroma_db")
     RAW_DOCS_DIR = os.environ.get("RAW_DOCS_DIR", "data/raw")
