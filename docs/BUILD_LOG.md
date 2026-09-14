@@ -201,3 +201,65 @@ ARTIFACT_REPO    = rag-qa-repo
 WIF_PROVIDER     = projects/896614942432/locations/global/workloadIdentityPools/github-pool/providers/github-provider
 DEPLOY_SERVICE_ACCOUNT = rag-qa-deployer@rag-qa-portfolio-02173.iam.gserviceaccount.com
 ```
+
+---
+
+## GitHub: repo, push, CI/CD wiring
+
+User authenticated `gh` themselves (`gh auth login`, HTTPS protocol, browser flow) —
+same reasoning as `gcloud auth login`: an agent should not hold or use a user's
+account credentials directly.
+
+- `git init`, staged everything, double-checked `git status` before committing to
+  confirm `.env` (the real API key) was excluded and only `.env.example` was staged —
+  it was.
+- `gh repo create Cashstu/rag-qa-portfolio --public --source=. --remote=origin` then
+  `git push -u origin main`.
+- Set the four non-secret identifiers from GCP provisioning as **GitHub Actions repo
+  variables** (`gh variable set`) — not secrets, deliberately, since Workload Identity
+  Federation means none of them are sensitive (a project ID and service account email
+  reveal nothing exploitable without also controlling the OIDC trust relationship).
+- The initial push triggered `.github/workflows/deploy.yml` automatically. Watching
+  it via `gh run watch` — expect the `test` job to pass (fully mocked, no secrets
+  needed) and the `deploy` job to reach Cloud Run but fail at the final step, since
+  `GOOGLE_API_KEY` in Secret Manager still has no version (the user hasn't added
+  their real key yet — see README's Deployment section for that one remaining manual
+  step). Actual outcome recorded below once the run finishes.
+
+**Three CI runs, two real bugs found and fixed by actually running the pipeline
+rather than just reading the YAML:**
+
+1. **Run 1** — `test` job passed. `deploy` job got through WIF auth, Docker
+   build/push to Artifact Registry, then failed at `gcloud run deploy`:
+   ```
+   Permission 'iam.serviceaccounts.actAs' denied on service account
+   896614942432-compute@developer.gserviceaccount.com
+   ```
+   The workflow never told `deploy-cloudrun` which service account to run the
+   *service* as, so it defaulted to the project's default compute SA — which the
+   deployer identity was never granted `iam.serviceAccountUser` on (only the
+   purpose-built `rag-qa-runtime` SA got that grant, deliberately, per the
+   least-privilege design above). Fix attempt 1: added `service_account:
+   rag-qa-runtime@...` to the action's `with:` block.
+
+2. **Run 2** — same exact error, unchanged. Inspecting the actual `gcloud run
+   deploy` command the action logged (`gh run view --job <id> --log`) showed it had
+   **no `--service-account` flag at all** — the action's `service_account` input
+   simply wasn't being translated into the gcloud invocation in this code path.
+   Lesson: a GitHub Action's documented input isn't guaranteed to do what its name
+   implies for every deployment mode; the log of the actual underlying command it
+   runs is the ground truth, and reading the YAML alone would not have caught this.
+   Fix: moved it into `flags: --service-account=...` instead — `flags` was already
+   confirmed (from run 1's log) to pass through to the real command verbatim.
+
+3. **Run 3** — the service-account fix worked; the logged command now correctly
+   includes `--service-account rag-qa-runtime@...`. Deploy got much further (past
+   IAM policy setup, into "Creating Revision") and failed with:
+   ```
+   Secret projects/896614942432/secrets/GOOGLE_API_KEY/versions/latest was not found
+   ```
+   This is the expected, final, deliberately-not-yet-solved step: the secret exists
+   but has zero versions because adding the real Gemini key is left to the user (see
+   the Secret Manager note above — a value never gets typed through this session on
+   purpose). Once the user runs the one `gcloud secrets versions add` command from
+   README.md and re-runs the workflow, this should be the last blocker.
