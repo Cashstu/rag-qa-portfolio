@@ -65,5 +65,7 @@ jobs:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.REGION }}
           image: ${{ env.IMAGE }}
+          service_account: rag-qa-runtime@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
           secrets: |
             GOOGLE_API_KEY=GOOGLE_API_KEY:latest
+          flags: --allow-unauthenticated
