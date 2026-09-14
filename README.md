@@ -9,6 +9,13 @@ Built as an end-to-end portfolio project: LangChain + Google Gemini for the RAG
 pipeline, ChromaDB for the vector store, Flask for the API, Docker + Cloud Run for
 deployment, and GitHub Actions (with keyless Workload Identity Federation) for CI/CD.
 
+**Live**: https://rag-qa-api-zqfc3mkefq-uc.a.run.app ([`/health`](https://rag-qa-api-zqfc3mkefq-uc.a.run.app/health))
+```bash
+curl -X POST https://rag-qa-api-zqfc3mkefq-uc.a.run.app/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How does BERT differ from previous language representation models?"}'
+```
+
 ## How it works
 
 ```
