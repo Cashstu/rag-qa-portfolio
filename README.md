@@ -19,7 +19,7 @@ question ──► Chroma similarity search (top-k chunks) ──┬──► an
 The corpus is five open-access arXiv papers on retrieval and language models
 (Attention Is All You Need, the original RAG paper, BERT, Dense Passage Retrieval,
 GPT-3). On first use, the app loads and chunks the PDFs, embeds each chunk with
-Gemini's `text-embedding-004`, and persists the result in a local Chroma store. Every
+Gemini's `gemini-embedding-001`, and persists the result in a local Chroma store. Every
 later question retrieves the top-k most similar chunks and asks
 `gemini-2.5-flash` to answer using only that context — the prompt explicitly
 instructs it not to answer from outside knowledge.
@@ -127,5 +127,5 @@ One-time manual steps before the pipeline can deploy:
 ## Tech stack
 
 Python 3.12 · Flask · gunicorn · LangChain · `langchain-google-genai` (Gemini
-`gemini-2.5-flash` + `text-embedding-004`) · ChromaDB · Docker · Google Cloud Run ·
+`gemini-2.5-flash` + `gemini-embedding-001`) · ChromaDB · Docker · Google Cloud Run ·
 Google Secret Manager · GitHub Actions (Workload Identity Federation) · pytest · ruff

@@ -70,7 +70,7 @@ otherwise it loads every PDF in `RAW_DOCS_DIR` with `PyPDFLoader`, splits with
 `RecursiveCharacterTextSplitter` (1000 chars / 150 overlap — small enough to keep
 retrieved chunks focused, generous enough overlap that an answer straddling a chunk
 boundary doesn't lose context), embeds with `GoogleGenerativeAIEmbeddings
-(models/text-embedding-004)`, and persists. This function is the one that turns into
+(models/gemini-embedding-001)`, and persists. This function is the one that turns into
 "lazy ingestion at container startup" once wired into the entrypoint script.
 
 **RAG chain (`app/rag.py`)**: built as one LCEL pipeline rather than
@@ -263,3 +263,50 @@ rather than just reading the YAML:**
    the Secret Manager note above — a value never gets typed through this session on
    purpose). Once the user runs the one `gcloud secrets versions add` command from
    README.md and re-runs the workflow, this should be the last blocker.
+
+---
+
+## Getting a real Gemini key: three unexpected blockers
+
+None of these were anticipated in the plan — all found by actually trying to get a
+working key, not by reading docs in advance.
+
+1. **User's machine was reset** mid-project. Checked survivability: `gcloud`/`gh`
+   auth tokens, Homebrew-installed CLIs, and the project's `.venv`/`.env` all
+   persisted (they live outside whatever got reset), so nothing needed redoing.
+2. **API keys disallowed on an auto-provisioned project.** The user first tried
+   creating a key via `console.cloud.google.com/agent-platform/studio/settings/api-keys`,
+   which was scoped to an auto-generated project Google created behind the scenes
+   (`project-939b296c-...`, not `rag-qa-portfolio-02173`), and that project's default
+   policy blocked raw API key creation, recommending ADC instead. Diagnosed by
+   comparing the project ID in the URL against the one we actually provisioned — they
+   didn't match. Fix: go to the classic `aistudio.google.com/app/apikey` URL instead
+   and explicitly pick `rag-qa-portfolio-02173` as the backing project when creating
+   the key, which worked. (Briefly considered rearchitecting the whole app onto
+   Vertex AI + ADC instead, which would also have solved it and arguably fits the
+   existing service-account setup even better — but the simpler fix worked, so that
+   rework wasn't needed.)
+3. **`models/text-embedding-004` no longer exists.** First live call to the real
+   Gemini API failed with `404 ... is not found for API version v1beta`. Rather than
+   guess a replacement name, queried the live model list directly:
+   `curl "https://generativelanguage.googleapis.com/v1beta/models?key=$KEY"`. Current
+   embedding models are `gemini-embedding-001` (stable) and `gemini-embedding-2`
+   (newer) — `text-embedding-004` has been fully retired since this project's design
+   was written. Switched `EMBEDDING_MODEL` (config default, `.env`, `.env.example`,
+   README) to `models/gemini-embedding-001`. `gemini-2.5-flash` (the chat model) was
+   still live in the same model list, so it didn't need changing.
+4. **Gemini API prepay credits depleted** on the very first real embedding call —
+   `429 ResourceExhausted`. The user, reasonably, didn't want to add money without
+   understanding the actual cost exposure. Set up a **Cloud Billing budget** (separate
+   from the Gemini prepay balance) as a safety net for the postpaid GCP/Cloud Run side:
+   ```bash
+   gcloud services enable billingbudgets.googleapis.com --project=rag-qa-portfolio-02173
+   gcloud billing budgets create --billing-account=011464-2696C2-5D2EA4 \
+     --display-name="RAG portfolio project - cost guard" --budget-amount=10USD \
+     --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1.0 \
+     --filter-projects=projects/rag-qa-portfolio-02173
+   ```
+   Also explained the actual cost model to the user: the Gemini side is *prepaid*, so
+   there's no overspend risk there by construction (you only ever lose what you
+   deposit); Cloud Run's free tier should keep the GCP side near $0 at this traffic
+   level regardless. Left the decision of how much to prepay to the user.
